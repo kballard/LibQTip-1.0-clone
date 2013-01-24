@@ -371,6 +371,7 @@ function ReleaseTooltip(tooltip)
 	end
 
 	for i, column in ipairs(tooltip.columns) do
+		column.left_margin = nil
 		tooltip.columns[i] = ReleaseFrame(column)
 	end
 	tooltip.columns = ReleaseTable(tooltip.columns)
@@ -542,9 +543,11 @@ function tipPrototype:AddColumn(justification)
 	if colNum > 1 then
 		local h_margin = self.cell_margin_h or CELL_MARGIN_H
 
+		column.left_margin = h_margin
 		column:SetPoint("LEFT", self.columns[colNum - 1], "RIGHT", h_margin, 0)
 		SetTooltipSize(self, self.width + h_margin, self.height)
 	else
+		column.left_margin = 0
 		column:SetPoint("LEFT", self.scrollChild)
 	end
 	column:Show()
@@ -756,9 +759,12 @@ end
 
 -- Add 2 pixels to height so dangling letters (g, y, p, j, etc) are not clipped.
 function ResetTooltipSize(tooltip)
-	local h_margin = tooltip.cell_margin_h or CELL_MARGIN_H
+	local width = 0
+	for _, column in ipairs(tooltip.columns) do
+		width = width + column.left_margin + column.width
+	end
 
-	SetTooltipSize(tooltip, max(0, h_margin * (#tooltip.columns - 1)), 2)
+	SetTooltipSize(tooltip, max(0, width), 2)
 end
 
 local function EnlargeColumn(tooltip, column, width)
@@ -793,10 +799,10 @@ function FixCellSizes(tooltip)
 			local left, right = colRange:match("^(%d+)%-(%d+)$")
 			left, right = tonumber(left), tonumber(right)
 
-			for col = left, right - 1 do
-				width = width - columns[col].width - h_margin
+			width = width - columns[left].width
+			for col = left+1, right do
+				width = width - columns[col].width - columns[col].left_margin
 			end
-			width = width - columns[right].width
 
 			if width <= 0 then
 				colspans[colRange] = nil

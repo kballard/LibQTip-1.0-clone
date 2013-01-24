@@ -515,8 +515,22 @@ function tipPrototype:SetColumnLayout(numColumns, ...)
 		error("number of columns must be a positive number, not: " .. tostring(numColumns), 2)
 	end
 
-	for i = 1, numColumns do
-		local justification = select(i, ...) or "LEFT"
+	local i, argi = 1, 1
+	while i <= numColumns do
+		local margin
+		local arg = select(argi, ...)
+		if type(arg) == "number" then
+			margin = arg
+			argi = argi + 1
+			if margin < 0 then
+				error("margin must be a positive number or zero, not: "..tostring(margin), 2)
+			end
+			arg = select(argi, ...)
+			if type(arg) == "number" then
+				arg = nil
+			end
+		end
+		local justification = arg or "LEFT"
 
 		checkJustification(justification, 2)
 
@@ -525,6 +539,14 @@ function tipPrototype:SetColumnLayout(numColumns, ...)
 		else
 			self:AddColumn(justification)
 		end
+		if margin then
+			local ok, msg = pcall(self.SetColumnLeftMargin, self, i, margin)
+			if not ok then
+				error(msg, 2)
+			end
+		end
+		i = i + 1
+		argi = argi + 1
 	end
 end
 

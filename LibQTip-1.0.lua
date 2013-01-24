@@ -372,6 +372,7 @@ function ReleaseTooltip(tooltip)
 
 	for i, column in ipairs(tooltip.columns) do
 		column.left_margin = nil
+		column.inColspan = nil
 		tooltip.columns[i] = ReleaseFrame(column)
 	end
 	tooltip.columns = ReleaseTable(tooltip.columns)
@@ -555,6 +556,31 @@ function tipPrototype:AddColumn(justification)
 	return colNum
 end
 
+function tipPrototype:SetColumnLeftMargin(colNum, margin)
+	if type(colNum) ~= "number" then
+		error("column number must be a number, not: "..tostring(colNum), 2)
+	elseif colNum < 1 or colNum > #self.columns then
+		error("column number out of range: "..tostring(colNum), 2)
+	elseif colNum == 1 then
+		error("column 1 cannot have a left margin", 2)
+	elseif type(margin) ~= "number" or margin < 0 then
+		error("margin must be a positive number or zero, not: "..tostring(margin), 2)
+	end
+
+	local column = self.columns[colNum]
+	if column.left_margin ~= margin then
+		if column.inColspan then
+			-- We can't change the margin of columns that are part of a colspan
+			-- because we don't save enough information to re-layout the affected colspans
+			error("left margin may not be modified on columns that are part of a colspan", 2)
+		end
+
+		column:SetPoint("LEFT", self.columns[colNum-1], "RIGHT", margin, 0)
+		SetTooltipSize(self, self.width + margin - column.left_margin, self.height)
+		column.left_margin = margin
+	end
+end
+
 ------------------------------------------------------------------------------
 -- Convenient methods
 ------------------------------------------------------------------------------
@@ -717,6 +743,7 @@ function tipPrototype:Clear()
 
 	for i, column in ipairs(self.columns) do
 		column.width = 0
+		column.inColspan = false
 		column:SetWidth(1)
 	end
 	wipe(self.colspans)
@@ -934,6 +961,11 @@ local function _SetCell(tooltip, lineNum, colNum, value, font, justification, co
 
 		tooltip.colspans[colRange] = max(tooltip.colspans[colRange] or 0, width)
 		layoutCleaner:RegisterForCleanup(tooltip)
+
+		-- Mark any columns that took part in this colspan
+		for i = colNum, rightColNum do
+			tooltip.columns[i].inColspan = true
+		end
 	else
 		-- Enlarge the column and tooltip if need be
 		EnlargeColumn(tooltip, tooltip.columns[colNum], width)

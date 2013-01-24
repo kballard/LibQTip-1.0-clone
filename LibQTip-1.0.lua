@@ -373,6 +373,7 @@ function ReleaseTooltip(tooltip)
 	for i, column in ipairs(tooltip.columns) do
 		column.left_margin = nil
 		column.inColspan = nil
+		column.isFixed = nil
 		tooltip.columns[i] = ReleaseFrame(column)
 	end
 	tooltip.columns = ReleaseTable(tooltip.columns)
@@ -848,7 +849,13 @@ function FixCellSizes(tooltip)
 			if width <= 0 then
 				colspans[colRange] = nil
 			else
-				width = width / (right - left + 1)
+				local numCols = right - left + 1
+				for col = left, right do
+					if columns[col].isFixed then
+						numCols = numCols - 1
+					end
+				end
+				width = width / numCols
 				if width > maxNeedWidthPerCol then
 					maxNeedCols = colRange
 					maxNeedWidthPerCol = width
@@ -859,7 +866,9 @@ function FixCellSizes(tooltip)
 		if maxNeedCols then
 			local left, right = maxNeedCols:match("^(%d+)%-(%d+)$")
 			for col = left, right do
-				EnlargeColumn(tooltip, columns[col], columns[col].width + maxNeedWidthPerCol)
+				if not columns[col].isFixed then
+					EnlargeColumn(tooltip, columns[col], columns[col].width + maxNeedWidthPerCol)
+				end
 			end
 			colspans[maxNeedCols] = nil
 		end
@@ -884,6 +893,7 @@ end
 local function _SetCell(tooltip, lineNum, colNum, value, font, justification, colSpan, provider, ...)
 	local line = tooltip.lines[lineNum]
 	local cells = line.cells
+	local columns = tooltip.columns
 
 	-- Unset: be quick
 	if value == nil then
@@ -924,12 +934,12 @@ local function _SetCell(tooltip, lineNum, colNum, value, font, justification, co
 	elseif prevCell == nil then
 		-- Creating a new cell, using meaningful defaults.
 		provider = provider or tooltip.labelProvider
-		justification = justification or tooltip.columns[colNum].justification or "LEFT"
+		justification = justification or columns[colNum].justification or "LEFT"
 		colSpan = colSpan or 1
 	else
 		error("overlapping cells at column " .. colNum, 3)
 	end
-	local tooltipWidth = #tooltip.columns
+	local tooltipWidth = #columns
 	local rightColNum
 
 	if colSpan > 0 then
@@ -943,6 +953,20 @@ local function _SetCell(tooltip, lineNum, colNum, value, font, justification, co
 		rightColNum = max(colNum, tooltipWidth + colSpan)
 		-- Update colspan to its effective value
 		colSpan = 1 + rightColNum - colNum
+	end
+
+	-- Ensure colspan has at least one non-fixed column
+	if colSpan > 1 then
+		local allFixed = true
+		for i = colNum, rightColNum do
+			if not columns[i].isFixed then
+				allFixed = false
+				break
+			end
+		end
+		if allFixed then
+			error("all columns in this colspan ignore colspan width", 2)
+		end
 	end
 
 	-- Cleanup colspans
@@ -964,8 +988,8 @@ local function _SetCell(tooltip, lineNum, colNum, value, font, justification, co
 	end
 
 	-- Anchor the cell
-	cell:SetPoint("LEFT", tooltip.columns[colNum])
-	cell:SetPoint("RIGHT", tooltip.columns[rightColNum])
+	cell:SetPoint("LEFT", columns[colNum])
+	cell:SetPoint("RIGHT", columns[rightColNum])
 	cell:SetPoint("TOP", line)
 	cell:SetPoint("BOTTOM", line)
 
@@ -986,11 +1010,11 @@ local function _SetCell(tooltip, lineNum, colNum, value, font, justification, co
 
 		-- Mark any columns that took part in this colspan
 		for i = colNum, rightColNum do
-			tooltip.columns[i].inColspan = true
+			columns[i].inColspan = true
 		end
 	else
 		-- Enlarge the column and tooltip if need be
-		EnlargeColumn(tooltip, tooltip.columns[colNum], width)
+		EnlargeColumn(tooltip, columns[colNum], width)
 	end
 
 	-- Enlarge the line and tooltip if need be
@@ -1219,6 +1243,28 @@ do
 		return _SetCell(self, lineNum, colNum, value, font, justification, colSpan, provider, select(i, ...))
 	end
 end -- do-block
+
+-- marks a column as not being resized if a colspan is too wide
+-- Cannot be called on columns that are already part of colspans.
+-- A colspan cannot be created that covers columns that all are marked.
+-- If `value` is not provided, defaults to `true`.
+function tipPrototype:SetColumnIgnoresColspanWidth(colNum, value)
+	if type(colNum) ~= "number" then
+		error("column number must be a number, not: "..tostring(colNum), 2)
+	elseif colNum < 1 or colNum > #self.columns then
+		error("column number out of range: "..colNum, 2)
+	elseif type(value) ~= "nil" and type(value) ~= "boolean" then
+		error("value must be boolean or nil, not: "..tostring(value), 2)
+	end
+
+	if value == nil then value = true end
+
+	if self.columns[colNum].inColspan and self.columns[colNum].isFixed ~= value then
+		error("column must not be part of an existing colspan", 2)
+	end
+
+	self.columns[colNum].isFixed = value
+end
 
 function tipPrototype:GetFont()
 	return self.regularFont

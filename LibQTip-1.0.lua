@@ -758,7 +758,7 @@ end
 function ResetTooltipSize(tooltip)
 	local h_margin = tooltip.cell_margin_h or CELL_MARGIN_H
 
-	SetTooltipSize(tooltip, max(0, (h_margin * (#tooltip.columns - 1)) + (h_margin / 2)), 2)
+	SetTooltipSize(tooltip, max(0, h_margin * (#tooltip.columns - 1)), 2)
 end
 
 local function EnlargeColumn(tooltip, column, width)
